@@ -7,37 +7,33 @@ console.log('Renderer loaded. electron =', window.electron)
 
 const ipc = window.electron
 
+;(async () => {
+  try {
+    const saved = await ipc.invoke('load-login')
+    if (saved && saved.profile) {
+      window.location.href = 'home.html'
+      return
+    }
+  } catch (e) {
+  }
+})()
+
 loginBtn.addEventListener('click', async () => {
   loginBtn.disabled = true
-  loginBtn.textContent = 'Getting device code...'
+  loginBtn.textContent = 'Opening Microsoft login...'
 
   try {
-    const deviceData = await ipc.invoke('get-device-code')
+    const result = await ipc.invoke('start-oauth')
 
-    codeText.textContent = deviceData.user_code
-    codeBox.style.display = 'block'
-    loginBtn.textContent = 'Waiting for authorization...'
+    const { mc, profile } = result
+    await ipc.invoke('save-login', { mc, profile }).catch(() => {})
 
-    const { mc, profile } = await ipc.invoke('poll-for-minecraft', deviceData)
-    profileDiv.style.display = 'block'
-    profileDiv.textContent = `Logged in as ${profile.name} (${profile.id})`
-    loginBtn.textContent = 'Launch Minecraft'
-    loginBtn.disabled = false
-
-    loginBtn.onclick = async () => {
-      const result = await ipc.invoke('launch', {
-        mcProfile: profile,
-        accessToken: mc.access_token,
-        versionJarPath: './path/to/your/minecraft.jar',
-        gameDir: './.minecraft'
-      })
-      console.log('Launch result:', result)
-    }
+    window.location.href = 'home.html'
 
   } catch (err) {
-    alert('Login failed: ' + err.message)
+    alert('Login failed: ' + (err.message || String(err)))
     console.error(err)
     loginBtn.disabled = false
-    loginBtn.textContent = 'Login with Microsoft'
+    loginBtn.textContent = 'Se connecter avec Microsoft'
   }
 })

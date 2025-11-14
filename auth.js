@@ -150,9 +150,31 @@ async function getMinecraftProfile(accessToken) {
 }
 
 
+async function exchangeAuthCode(code, redirect_uri) {
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: CLIENT_ID,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri
+    })
+  })
+
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(`[Microsoft] Token exchange failed: ${JSON.stringify(data)}`)
+  }
+
+  return data
+}
+
+
 async function launchMinecraft({ mcProfile, accessToken, versionJarPath, gameDir }) {
   console.log('Launching Minecraft for', mcProfile.name)
-  return { ok: true }
+  console.log('Launch details:', { mcProfile, accessToken, versionJarPath, gameDir })
+  return { ok: true, message: 'Minecraft launch request received. Implement actual launcher.' }
 }
 
 module.exports = {
@@ -162,6 +184,8 @@ module.exports = {
   getXSTSToken,
   getMinecraftAccessToken,
   getMinecraftProfile,
-  launchMinecraft
+  launchMinecraft,
+  exchangeAuthCode,
+  CLIENT_ID,
+  SCOPE
 }
-

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CubicLauncher - Home</title>
+  <style>
+    body {
+      margin: 0;
+      background: url(img/bg.png);
+      font-family: 'Orbitron', system-ui, sans-serif;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .layout {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+    .sidebar {
+      width: 90px;
+      background: url(img/bg.png);
+      border-right: 4px solid #222;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+    .sidebar-logo {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin-top: 18px;
+      margin-bottom: 18px;
+      letter-spacing: -2px;
+      color: #222;
+      font-family: 'Orbitron', sans-serif;
+    }
+    .sidebar-icons {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+    }
+    .sidebar-icon {
+      width: 64px;
+      height: 48px;
+      background: #fff;
+      border: 4px solid #222;
+      border-radius: 12px;
+      font-size: 1.2rem;
+      color: #222;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Orbitron', sans-serif;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+    }
+    .sidebar-icon:hover {
+      box-shadow: 0 0 0 2px #3a86ff;
+    }
+    .sidebar-bottom {
+      margin-bottom: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .sidebar-bottom-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #fff;
+      border: 4px solid #222;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: flex-start;
+      position: relative;
+      padding: 0 0 0 48px;
+    }
+    .content-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      margin-top: 80px;
+      min-width: 420px;
+    }
+    .title {
+      font-size: 2.8rem;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: bold;
+      color: #222;
+      margin-bottom: 0;
+      letter-spacing: -2px;
+    }
+    .subtext {
+      font-size: 1.3rem;
+      color: #222;
+      margin-bottom: 18px;
+      font-family: 'Orbitron', sans-serif;
+      letter-spacing: 1px;
+    }
+    .play-btn {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.3rem;
+      background: #fff;
+      border: 4px solid #222;
+      border-radius: 12px;
+      padding: 12px 32px;
+      cursor: pointer;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      transition: box-shadow 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .play-btn:hover {
+      box-shadow: 0 0 0 2px #3a86ff;
+      background: #f0f8ff;
+    }
+    .profile-area {
+      position: absolute;
+      top: 32px;
+      right: 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 12px;
+    }
+    .profile-img {
+      width: 96px;
+      height: 96px;
+      border-radius: 32px 32px 32px 32px;
+      border: 4px solid #222;
+      background: #eee;
+      object-fit: cover;
+      image-rendering: pixelated;
+    }
+    .status-dot {
+      position: absolute;
+      bottom: 18px;
+      right: 18px;
+      width: 24px;
+      height: 24px;
+      background: #3ad86f;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      z-index: 2;
+    }
+    .settings-btn {
+      position: absolute;
+      bottom: 18px;
+      right: 48px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #fff;
+      border: 4px solid #222;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+    }
+    .settings-btn:hover {
+      box-shadow: 0 0 0 2px #3a86ff;
+      background: #f0f8ff;
+    }
+    .nintencubelogo {
+      font-family: 'logo', sans-serif;
+      font-size: 3.5rem;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+      letter-spacing: 3px
+    }
+    @font-face {
+    font-family: logo;
+    src: url("font/logo.otf") format("opentype");
+    }
+    .textsubtext {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.2rem;
+      color: #ffffff;
+      margin: 0;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-logo"><img src="img/logo_cl_small.png" alt="CL" width="80" height="60"></div>
+      <div class="sidebar-bottom">
+        <div class="sidebar-bottom-icon">&#9788;</div>
+      </div>
+    </div>
+    <div class="main-content">
+      <div class="content-left">
+        <div class="title" id="title"><p class="nintencubelogo">nintencube</p></div>
+        <br>
+        <div class="subtext" id="profile"><p class="textsubtext">Amusez-vous bien!</p></div>
+        <button class="play-btn" id="launchBtn">&#9658; JOUER</button>
+      </div>
+      <div class="profile-area">
+        <a href="#" id="profileLink"><img id="skinImg" class="profile-img" src="profile.png" alt="Profile" /></a>
+      </div>
+    
+    <div id="settingsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+      <div style="background:#fff; color:#111; border-radius:12px; width:420px; max-width:90%; padding:18px; box-shadow:0 8px 40px rgba(0,0,0,0.4); position:relative;">
+        <h3 style="margin:0 0 8px 0;">Account Settings</h3>
+        <p style="margin:0 0 12px 0; color:#333;">Manage account and launcher settings.</p>
+        <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+          <img id="modalSkin" src="profile.png" style="width:64px;height:64px;border-radius:12px;border:2px solid #222; image-rendering:pixelated;" />
+          <div style="flex:1;">
+            <div id="modalName" style="font-weight:700;">Username</div>
+            <div id="modalUUID" style="font-size:12px;color:#666;">UUID</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button id="modalLogout" style="background:#d9534f;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;">Logout</button>
+          <button id="modalClose" style="background:#eee;border:1px solid #ccc;padding:8px 12px;border-radius:8px;cursor:pointer;">Close</button>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+  <script src="home.js"></script>
+</body>
+</html>
