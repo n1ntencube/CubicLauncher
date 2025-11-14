@@ -26,7 +26,6 @@ async function getDeviceCode() {
 }
 
 
-// ✅ Step 2: Poll until the user logs in
 async function pollForToken(device_code, interval, expires_in) {
   const start = Date.now()
   while (Date.now() - start < expires_in * 1000) {
@@ -57,7 +56,6 @@ async function pollForToken(device_code, interval, expires_in) {
   throw new Error('auth a été timeout')
 }
 
-// ✅ Step 3: Xbox Live auth
 async function authenticateWithXBL(accessToken) {
   const res = await fetch('https://user.auth.xboxlive.com/user/authenticate', {
     method: 'POST',
@@ -166,3 +164,4 @@ module.exports = {
   getMinecraftProfile,
   launchMinecraft
 }
+
