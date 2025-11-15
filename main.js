@@ -5,6 +5,9 @@ const https = require('https')
 const fs = require('fs').promises
 const { spawn } = require('child_process')
 const os = require('os')
+const { Client, Authenticator } = require('minecraft-launcher-core')
+let mysql
+try { mysql = require('mysql2/promise') } catch (e) { console.warn('mysql2 not installed yet') }
 const {
   getDeviceCode,
   pollForToken,
@@ -19,12 +22,90 @@ const {
 } = require('./auth')
 
 let mainWindow
+let minecraftProcess = null
+let launcherClient = null
+let dbPool = null
+let modsDbPool = null
+
+async function getDbPool() {
+  if (dbPool) return dbPool
+  if (!mysql) throw new Error('mysql2 not available')
+  const configPath = path.join(__dirname, 'dbconfig.json')
+  let raw
+  try { raw = await fs.readFile(configPath, 'utf8') } catch (e) { throw new Error('dbconfig.json missing') }
+  let cfg
+  try { cfg = JSON.parse(raw) } catch (e) { throw new Error('dbconfig.json invalid JSON') }
+  const { host, port, user, password, database } = cfg
+  dbPool = mysql.createPool({ host, port, user, password, database, waitForConnections: true, connectionLimit: 5 })
+  return dbPool
+}
+
+async function getModsDbPool() {
+  if (modsDbPool) return modsDbPool
+  if (!mysql) throw new Error('mysql2 not available')
+  const configPath = path.join(__dirname, 'modsdb.json')
+  let raw
+  try { raw = await fs.readFile(configPath, 'utf8') } catch (e) { 
+    console.warn('[ModsDB] modsdb.json not found, falling back to dbconfig.json')
+    return getDbPool()
+  }
+  let cfg
+  try { cfg = JSON.parse(raw) } catch (e) { 
+    console.warn('[ModsDB] modsdb.json invalid, falling back to dbconfig.json')
+    return getDbPool()
+  }
+  const { host, port, user, password, database } = cfg
+  modsDbPool = mysql.createPool({ host, port, user, password, database, waitForConnections: true, connectionLimit: 5 })
+  return modsDbPool
+}
+
+ipcMain.handle('get-user-rank', async (_event, payload) => {
+  const { uuid, username } = payload || {}
+  if (!uuid && !username) return { ok: false, rank: null, error: 'uuid or username required' }
+  try {
+    const pool = await getDbPool()
+    const configPath = path.join(__dirname, 'dbconfig.json')
+    const raw = await fs.readFile(configPath, 'utf8')
+    const cfg = JSON.parse(raw)
+    const prefix = cfg.tablePrefix || 'luckperms_'
+    let queryTried = []
+    let rank = null
+
+    if (uuid) {
+      const uuidWithDashes = uuid.toLowerCase()
+      const uuidNoDashes = uuidWithDashes.replace(/-/g, '')
+      const [rowsDash] = await pool.query(`SELECT primary_group FROM \`${prefix}players\` WHERE uuid = ? LIMIT 1`, [uuidWithDashes])
+      queryTried.push({ by: 'uuid-dash', count: rowsDash.length })
+      if (rowsDash.length && rowsDash[0].primary_group) rank = rowsDash[0].primary_group
+      if (!rank) {
+        const [rowsNoDash] = await pool.query(`SELECT primary_group FROM \`${prefix}players\` WHERE uuid = ? LIMIT 1`, [uuidNoDashes])
+        queryTried.push({ by: 'uuid-nodash', count: rowsNoDash.length })
+        if (rowsNoDash.length && rowsNoDash[0].primary_group) rank = rowsNoDash[0].primary_group
+      }
+    }
+
+    if (!rank && username) {
+      const [rowsUser] = await pool.query(`SELECT primary_group FROM \`${prefix}players\` WHERE LOWER(username) = LOWER(?) LIMIT 1`, [username])
+      queryTried.push({ by: 'username', count: rowsUser.length })
+      if (rowsUser.length && rowsUser[0].primary_group) rank = rowsUser[0].primary_group
+    }
+
+    console.log('[RankLookup] attempts:', queryTried, 'resolved rank:', rank)
+    if (rank) return { ok: true, rank, debug: queryTried }
+    return { ok: true, rank: null, debug: queryTried }
+  } catch (err) {
+    console.error('Rank lookup error:', err)
+    return { ok: false, rank: null, error: err.message, debug: 'exception' }
+  }
+})
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     autoHideMenuBar: true,
-    width: 1000,
-    height: 630,
+    width: 600,
+    height: 700,
+    resizable: false,
+    icon: path.join(__dirname, 'renderer/img/logo_cl_small.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -33,7 +114,7 @@ function createWindow() {
     }
   })
 
-  mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'))
+  mainWindow.loadFile(path.join(__dirname, 'renderer/loading.html'))
 }
 
 app.whenReady().then(createWindow)
@@ -79,114 +160,141 @@ ipcMain.handle('launch', async (event, args) => {
     const { mcProfile, accessToken } = args
     
     const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
-    const versionsDir = path.join(gameDir, 'versions')
-    const clientJar = path.join(versionsDir, '1.12.2', '1.12.2.jar')
-    
     await fs.mkdir(gameDir, { recursive: true })
-    await fs.mkdir(versionsDir, { recursive: true })
 
-    console.log(`[Launcher] Attempting to launch Minecraft 1.12.2 for ${mcProfile.name}`)
+    console.log(`[Launcher] Launching Minecraft 1.12.2 with Forge for ${mcProfile.name}`)
     console.log(`[Launcher] Game directory: ${gameDir}`)
-    console.log(`[Launcher] Client JAR: ${clientJar}`)
-    console.log(`[Launcher] Minecraft UUID: ${mcProfile.id}`)
     
-    let jarExists = false
+    const brokenForgeDir = path.join(gameDir, 'versions', '1.12.2-forge14.23.5.2860')
     try {
-      await fs.access(clientJar)
-      jarExists = true
-      console.log(`[Launcher] Found Minecraft 1.12.2 JAR`)
+      await fs.rm(brokenForgeDir, { recursive: true, force: true })
+      console.log('[Launcher] Removed previous Forge version directory to ensure clean setup.')
     } catch (e) {
-      console.log('[Launcher] Minecraft JAR not found, downloading...')
-      event.sender.send('install-progress', { status: 'downloading-minecraft', progress: 0 })
-      
+    }
+
+    // Forge universal jar location
+    const forgeVersion = '14.23.5.2860'
+    const forgeUniversalName = `forge-1.12.2-${forgeVersion}-universal.jar`
+    const forgeUniversalPath = path.join(gameDir, forgeUniversalName)
+    const forgeUniversalUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/1.12.2-${forgeVersion}/${forgeUniversalName}`
+
+    let forgeExists = false
+    try {
+      await fs.access(forgeUniversalPath)
+      forgeExists = true
+      console.log(`[Launcher] Found Forge universal JAR: ${forgeUniversalPath}`)
+    } catch (e) {
+      console.log('[Launcher] Forge universal JAR missing, will download now...')
       try {
-        const res = await new Promise((resolve) => {
-          ipcMain.emit('invoke', 'download-minecraft', { version: '1.12.2' }, resolve)
+        await new Promise((resolve, reject) => {
+          https.get(forgeUniversalUrl, (res) => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`Forge download failed HTTP ${res.statusCode}`))
+              return
+            }
+            const fileStream = require('fs').createWriteStream(forgeUniversalPath)
+            res.pipe(fileStream)
+            fileStream.on('finish', () => fileStream.close(resolve))
+            fileStream.on('error', reject)
+          }).on('error', reject)
         })
+        forgeExists = true
+        console.log('[Launcher] Forge universal JAR downloaded successfully.')
       } catch (err) {
-        throw new Error(`Failed to download Minecraft: ${err.message}`)
+        console.error('[Launcher] Failed to download Forge universal JAR:', err)
+      }
+    }
+    
+    launcherClient = new Client()
+
+    const launchOptions = {
+      authorization: {
+        access_token: accessToken,
+        client_token: mcProfile.id,
+        uuid: mcProfile.id,
+        name: mcProfile.name,
+        user_properties: '{}',
+        meta: { type: 'msa', demo: false }
+      },
+      root: gameDir,
+      version: {
+        number: '1.12.2',
+        type: 'release'
+      },
+      forge: forgeExists ? forgeUniversalPath : undefined,
+      memory: {
+        max: '2G',
+        min: '1G'
       }
     }
 
-    let launchCmd = []
-    let launchArgs = []
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('minecraft-log', { text: '[Launcher] Starting Minecraft with minecraft-launcher-core...' })
+    }
 
-    const javaCheck = await ensureJavaAvailableLocal()
-    if (!javaCheck.ok) throw new Error('Java not available: ' + (javaCheck.error || 'unknown'))
-    const javaExec = javaCheck.path
+    launcherClient.on('debug', (message) => {
+      console.log('[MCLC Debug]', message)
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('minecraft-log', { text: `[Debug] ${message}` })
+      }
+    })
 
-    let installedForgeJar = null
-    try {
-      const entries = await fs.readdir(versionsDir).catch(() => [])
-      for (const name of entries) {
-        if (name && name.startsWith('1.12.2-forge')) {
-          const cand = path.join(versionsDir, name, `${name}.jar`)
-          try {
-            await fs.access(cand)
-            installedForgeJar = cand
-            break
-          } catch (e) {}
+    launcherClient.on('data', (chunk) => {
+      try {
+        let text = ''
+        if (typeof chunk === 'string') text = chunk
+        else if (chunk) text = chunk.toString()
+        text = text.trim()
+        if (!text) return
+        console.log('[MC]', text)
+        if (mainWindow && mainWindow.webContents) {
+          mainWindow.webContents.send('minecraft-log', { text })
         }
+      } catch (e) {
+        console.error('[MC data parse error]', e)
       }
-    } catch (e) {}
+    })
 
-    if (installedForgeJar) {
-      launchCmd = javaExec
-      launchArgs = [
-        `-Xmx2G`,
-        `-Xms1G`,
-        `-Dfile.encoding=UTF-8`,
-        `-Duser.country=US`,
-        `-Duser.language=en`,
-        `-cp`,
-        `${clientJar}${path.delimiter}${installedForgeJar}`,
-        `net.minecraft.launchwrapper.Launch`,
-        `--username=${mcProfile.name}`,
-        `--version=1.12.2-forge`,
-        `--gameDir=${gameDir}`,
-        `--assetsDir=${path.join(gameDir, 'assets')}`,
-        `--uuid=${mcProfile.id}`,
-        `--userType=mojang`
-      ]
-    } else {
-      launchCmd = javaExec
-      launchArgs = [
-        `-Xmx2G`,
-        `-Xms1G`,
-        `-Dfile.encoding=UTF-8`,
-        `--add-modules=ALL-SYSTEM`,
-        `-Djava.net.preferIPv4Stack=true`,
-        `-p`,
-        path.join(gameDir, 'libraries'),
-        `-cp`,
-        clientJar,
-        `net.minecraft.client.main.Main`,
-        `--username=${mcProfile.name}`,
-        `--version=1.12.2`,
-        `--gameDir=${gameDir}`,
-        `--assetsDir=${path.join(gameDir, 'assets')}`,
-        `--assetIndex=1.12`,
-        `--uuid=${mcProfile.id}`,
-        `--accessToken=${accessToken}`,
-        `--userType=mojang`
-      ]
-    }
+    launcherClient.on('progress', (progress) => {
+      console.log(`[MCLC Progress] ${progress.type}: ${progress.task}/${progress.total}`)
+      if (mainWindow && mainWindow.webContents) {
+        const percent = Math.round((progress.task / progress.total) * 100)
+        mainWindow.webContents.send('install-progress', {
+          status: progress.type,
+          progress: percent
+        })
+      }
+    })
 
-    try {
-      const proc = spawn(launchCmd, launchArgs, {
-        detached: true,
-        cwd: gameDir,
-        stdio: 'ignore'
-      })
-      proc.unref()
-      
-      console.log('[Launcher] Minecraft launched successfully')
-      return { ok: true, message: 'Minecraft 1.12.2 launched' }
-    } catch (err) {
-      throw new Error(`Failed to spawn Minecraft process: ${err.message}`)
-    }
+    launcherClient.on('error', (err) => {
+      console.error('[MCLC Error]', err)
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('minecraft-log', { text: `[MCLC ERROR] ${err.message || err}` })
+        mainWindow.webContents.send('minecraft-error', { error: err.message || String(err) })
+      }
+    })
+
+    launcherClient.on('close', (code) => {
+      const exitCode = (typeof code === 'number') ? code : 0
+      const crashed = exitCode !== 0
+      console.log(`[Launcher] Minecraft process exited with code ${exitCode}`)
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('minecraft-exit', { code: exitCode, crashed })
+      }
+      minecraftProcess = null
+      launcherClient = null
+    })
+
+    console.log('[Launcher] Launch options:', JSON.stringify(launchOptions, null, 2))
+    launcherClient.launch(launchOptions)
+
+    console.log('[Launcher] Launch initiated')
+    return { ok: true, message: 'Minecraft 1.12.2 launched', navigateToConsole: true }
   } catch (err) {
     console.error('[Launcher] Error:', err)
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('minecraft-error', { error: err.message })
+    }
     throw err
   }
 })
@@ -465,6 +573,35 @@ ipcMain.handle('remove-mod', async (event, { modName }) => {
   }
 })
 
+ipcMain.handle('get-nintencube-mods', async () => {
+  try {
+    console.log('[NintenCube] Fetching mod list from database')
+    const pool = await getModsDbPool()
+    if (!pool) {
+      console.warn('[NintenCube] Database connection not available')
+      return { ok: true, mods: [] }
+    }
+
+    const [rows] = await pool.query(
+      'SELECT mod_name, mod_url, mod_version, enabled, required FROM mods WHERE enabled = 1 ORDER BY mod_name'
+    )
+    
+    console.log(`[NintenCube] Found ${rows.length} enabled mods in database`)
+    
+    const mods = rows.map(row => ({
+      name: row.mod_name,
+      url: row.mod_url,
+      version: row.mod_version,
+      required: Boolean(row.required)
+    }))
+    
+    return { ok: true, mods }
+  } catch (err) {
+    console.error('[NintenCube] Database error:', err)
+    return { ok: false, mods: [], error: err.message }
+  }
+})
+
 ipcMain.handle('install-forge-mods', async (event, { modsUrls, onProgress }) => {
   try {
     const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
@@ -480,105 +617,91 @@ ipcMain.handle('install-forge-mods', async (event, { modsUrls, onProgress }) => 
     await fs.mkdir(librariesDir, { recursive: true })
 
     const forgeVersion = '14.23.5.2860'
-    const forgeUrl = `https://files.minecraftforge.net/maven/net/minecraftforge/forge/1.12.2-${forgeVersion}/forge-1.12.2-${forgeVersion}-installer.jar`
-    const forgeInstallerPath = path.join(versionsDir, `forge-1.12.2-installer.jar`)
-    const forgeProfileDir = path.join(versionsDir, `1.12.2-forge`)
-    const forgeProfileJar = path.join(forgeProfileDir, `1.12.2-forge.jar`)
+    const forgeProfileDir = path.join(versionsDir, `1.12.2-forge${forgeVersion}`)
+    const forgeProfileJar = path.join(forgeProfileDir, `1.12.2-forge${forgeVersion}.jar`)
 
-    console.log('[ForgeInstaller] Forge URL:', forgeUrl)
-    console.log('[ForgeInstaller] Downloading Forge...')
-    event.sender.send('install-progress', { status: 'downloading-forge', progress: 0 })
-
+    let forgeExists = false
     try {
-      await downloadFile(forgeUrl, forgeInstallerPath, (progress) => {
-        event.sender.send('install-progress', {
-          status: 'downloading-forge',
-          progress: Math.round(progress.percent || 0)
+      await fs.access(forgeProfileJar)
+      forgeExists = true
+      console.log('[ForgeInstaller] Forge already installed')
+      event.sender.send('install-progress', { status: 'installing-forge', progress: 50 })
+    } catch (e) {
+    }
+
+    if (!forgeExists) {
+      // Download universal JAR directly instead of installer
+      const forgeUniversalUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/1.12.2-${forgeVersion}/forge-1.12.2-${forgeVersion}-universal.jar`
+      console.log('[ForgeInstaller] Forge URL:', forgeUniversalUrl)
+      console.log('[ForgeInstaller] Downloading Forge universal JAR...')
+      event.sender.send('install-progress', { status: 'downloading-forge', progress: 0 })
+
+      await fs.mkdir(forgeProfileDir, { recursive: true })
+
+      try {
+        await downloadFile(forgeUniversalUrl, forgeProfileJar, (progress) => {
+          console.log(`[ForgeInstaller] Download progress: ${progress.percent}%`)
+          event.sender.send('install-progress', {
+            status: 'downloading-forge',
+            progress: Math.round((progress.percent || 0) * 0.3)
+          })
         })
-      })
-    } catch (err) {
-      console.error('[ForgeInstaller] Forge download failed:', err)
-      throw new Error(`Failed to download Forge: ${err.message}`)
-    }
-
-    console.log('[ForgeInstaller] Extracting Forge...')
-    event.sender.send('install-progress', { status: 'installing-forge', progress: 40 })
-
-    await fs.mkdir(forgeProfileDir, { recursive: true })
-
-    try {
-      const AdmZip = require('adm-zip')
-      const zip = new AdmZip(forgeInstallerPath)
-      const extractDir = path.join(versionsDir, '_forge_extract_temp')
-      await fs.mkdir(extractDir, { recursive: true })
-      zip.extractAllTo(extractDir, true)
-
-      const profileJsonPath = path.join(extractDir, 'install_profile.json')
-      let profileJson = null
-      try {
-        const profileContent = await fs.readFile(profileJsonPath, 'utf8')
-        profileJson = JSON.parse(profileContent)
-      } catch (e) {
-        console.warn('[ForgeInstaller] Could not read install_profile.json, creating basic profile')
+        console.log('[ForgeInstaller] Forge download complete')
+      } catch (err) {
+        console.error('[ForgeInstaller] Forge download failed:', err)
+        throw new Error(`Failed to download Forge: ${err.message}`)
       }
 
-      const versionJsonPath = path.join(extractDir, 'version.json')
-      let versionJson = null
+      console.log('[ForgeInstaller] Downloading LaunchWrapper...')
+      event.sender.send('install-progress', { status: 'downloading-forge', progress: 30 })
+      
+      const launchWrapperDir = path.join(librariesDir, 'net', 'minecraft', 'launchwrapper', '1.12')
+      await fs.mkdir(launchWrapperDir, { recursive: true })
+      const launchWrapperPath = path.join(launchWrapperDir, 'launchwrapper-1.12.jar')
+      
       try {
-        const versionContent = await fs.readFile(versionJsonPath, 'utf8')
-        versionJson = JSON.parse(versionContent)
-      } catch (e) {
-        console.warn('[ForgeInstaller] Could not read version.json')
-      }
-
-      const mavenPath = path.join(extractDir, 'maven')
-      if (mavenPath && await fs.stat(mavenPath).catch(() => null)) {
-        console.log('[ForgeInstaller] Copying maven libraries...')
-        const copyRecursive = async (src, dest) => {
-          await fs.mkdir(dest, { recursive: true })
-          const files = await fs.readdir(src)
-          for (const file of files) {
-            const srcPath = path.join(src, file)
-            const destPath = path.join(dest, file)
-            const stat = await fs.stat(srcPath)
-            if (stat.isDirectory()) {
-              await copyRecursive(srcPath, destPath)
-            } else {
-              await fs.copyFile(srcPath, destPath)
-            }
+        await downloadFile(
+          'https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar',
+          launchWrapperPath,
+          (progress) => {
+            event.sender.send('install-progress', {
+              status: 'downloading-forge',
+              progress: 30 + Math.round((progress.percent || 0) * 0.1)
+            })
           }
-        }
-        await copyRecursive(mavenPath, librariesDir)
+        )
+        console.log('[ForgeInstaller] LaunchWrapper downloaded')
+      } catch (err) {
+        console.warn('[ForgeInstaller] LaunchWrapper download failed:', err.message)
       }
-
-      const forgeJsonPath = path.join(forgeProfileDir, '1.12.2-forge.json')
-      const forgeProfileData = {
-        id: '1.12.2-forge',
-        inheritsFrom: '1.12.2',
-        releaseTime: new Date().toISOString(),
-        time: new Date().toISOString(),
-        type: 'release',
-        mainClass: versionJson?.mainClass || 'net.minecraft.launchwrapper.Launch',
-        minecraftArguments: versionJson?.minecraftArguments || '--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type}',
-        libraries: versionJson?.libraries || [],
-        jar: '1.12.2'
-      }
-      await fs.writeFile(forgeJsonPath, JSON.stringify(forgeProfileData, null, 2), 'utf8')
-
-      const forgeClientPath = path.join(extractDir, 'forge-1.12.2-universal.jar')
-      if (forgeClientPath && await fs.stat(forgeClientPath).catch(() => null)) {
-        await fs.copyFile(forgeClientPath, forgeProfileJar)
-        console.log('[ForgeInstaller] Copied Forge client JAR')
-      }
-
-      await fs.rm(extractDir, { recursive: true, force: true }).catch(() => {})
-
-      console.log('[ForgeInstaller] Forge installation complete')
-      event.sender.send('install-progress', { status: 'complete', progress: 100 })
-    } catch (err) {
-      console.error('[ForgeInstaller] Extraction/setup failed:', err)
-      throw new Error(`Forge setup failed: ${err.message}`)
     }
+
+    console.log('[ForgeInstaller] Setting up Forge profile...')
+    event.sender.send('install-progress', { status: 'installing-forge', progress: 50 })
+
+    const forgeJsonPath = path.join(forgeProfileDir, `1.12.2-forge${forgeVersion}.json`)
+    const forgeProfileData = {
+      id: `1.12.2-forge${forgeVersion}`,
+      inheritsFrom: '1.12.2',
+      releaseTime: new Date().toISOString(),
+      time: new Date().toISOString(),
+      type: 'release',
+      mainClass: 'net.minecraft.launchwrapper.Launch',
+      minecraftArguments: '--username ${auth_player_name} --version 1.12.2-forge --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex 1.12 --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker',
+      libraries: [],
+      jar: '1.12.2'
+    }
+    
+    try {
+      await fs.writeFile(forgeJsonPath, JSON.stringify(forgeProfileData, null, 2), 'utf8')
+      console.log('[ForgeInstaller] Forge profile created')
+    } catch (err) {
+      console.error('[ForgeInstaller] Failed to write profile JSON:', err)
+      throw new Error(`Failed to create Forge profile: ${err.message}`)
+    }
+
+    console.log('[ForgeInstaller] Forge installation complete')
+    event.sender.send('install-progress', { status: 'complete', progress: 100 })
 
     if (modsUrls && Array.isArray(modsUrls) && modsUrls.length > 0) {
       console.log(`[ForgeInstaller] Installing ${modsUrls.length} mods...`)
@@ -708,6 +831,27 @@ ipcMain.handle('get-game-dir', async () => {
   const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
   await fs.mkdir(gameDir, { recursive: true })
   return gameDir
+})
+
+ipcMain.handle('resize-window', async (event, { width, height }) => {
+  if (mainWindow) {
+    mainWindow.setSize(width, height)
+    mainWindow.setResizable(true)
+    mainWindow.center()
+  }
+  return { ok: true }
+})
+
+ipcMain.handle('kill-minecraft', async () => {
+  if (minecraftProcess) {
+    try {
+      minecraftProcess.kill()
+      return { ok: true, message: 'Process killed' }
+    } catch (err) {
+      throw new Error(`Failed to kill process: ${err.message}`)
+    }
+  }
+  return { ok: false, message: 'No process running' }
 })
 
 ipcMain.handle('download-minecraft', async (event, { version }) => {

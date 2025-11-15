@@ -12,7 +12,8 @@ const TRANSLATIONS = {
     autoLaunch: 'Auto-launch on start',
     ramAlloc: 'RAM Allocation (GB)',
     language: 'Language',
-    save: 'Save'
+    save: 'Save',
+    loginMicrosoft: 'Sign in with Microsoft'
   },
   fr: {
     title: 'nintencube',
@@ -27,7 +28,8 @@ const TRANSLATIONS = {
     autoLaunch: 'Lancement automatique au démarrage',
     ramAlloc: 'Allocation RAM (GB)',
     language: 'Langue',
-    save: 'Enregistrer'
+    save: 'Enregistrer',
+    loginMicrosoft: 'Se connecter avec Microsoft'
   },
   es: {
     title: 'nintencube',
@@ -42,7 +44,8 @@ const TRANSLATIONS = {
     autoLaunch: 'Iniciar automáticamente al comenzar',
     ramAlloc: 'Asignación de RAM (GB)',
     language: 'Idioma',
-    save: 'Guardar'
+    save: 'Guardar',
+    loginMicrosoft: 'Iniciar sesión con Microsoft'
   },
   de: {
     title: 'nintencube',
@@ -57,7 +60,8 @@ const TRANSLATIONS = {
     autoLaunch: 'Automatischer Start beim Starten',
     ramAlloc: 'RAM-Zuweisung (GB)',
     language: 'Sprache',
-    save: 'Speichern'
+    save: 'Speichern',
+    loginMicrosoft: 'Mit Microsoft anmelden'
   }
 }
 

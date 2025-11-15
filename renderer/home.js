@@ -1,6 +1,12 @@
 (async () => {
   const ipc = window.electron
 
+  try {
+    await ipc.invoke('resize-window', { width: 1000, height: 630 })
+  } catch (e) {
+    console.warn('Failed to resize window:', e)
+  }
+
   const langManager = new window.LanguageManager()
 
   function fadeTransition(element, action = 'in') {
@@ -25,10 +31,12 @@
   })
 
   const skinImg = document.getElementById('skinImg')
+  const rankBadge = document.getElementById('rankBadge')
   const launchBtn = document.getElementById('launchBtn')
   const profileLink = document.getElementById('profileLink')
   const accountSettingsBtn = document.getElementById('accountSettingsBtn')
   const settingsIconBtn = document.getElementById('settingsIconBtn')
+  const logoBtn = document.getElementById('logoBtn')
   const settingsModal = document.getElementById('settingsModal')
   const launcherSettingsModal = document.getElementById('launcherSettingsModal')
   const modalClose = document.getElementById('modalClose')
@@ -36,6 +44,12 @@
   const modalName = document.getElementById('modalName')
   const modalUUID = document.getElementById('modalUUID')
   const modalSkin = document.getElementById('modalSkin')
+  const aboutModal = document.getElementById('aboutModal')
+  const aboutClose = document.getElementById('aboutClose')
+  const aboutVersionEl = document.getElementById('aboutVersion')
+  const aboutRepoEl = document.getElementById('aboutRepo')
+  const aboutAuthorEl = document.getElementById('aboutAuthor')
+  const aboutNameEl = document.getElementById('aboutName')
   const launcherSettingsClose = document.getElementById('launcherSettingsClose')
   const launcherSettingsSave = document.getElementById('launcherSettingsSave')
   const languageSelect = document.getElementById('languageSelect')
@@ -108,6 +122,51 @@
     console.error('Failed to load skin:', err)
   }
 
+  async function loadRank() {
+    if (!rankBadge) return
+    try {
+      const res = await ipc.invoke('get-user-rank', { uuid: profile.id, username: profile.name })
+      console.log('[Rank] Response:', res)
+      let group = res && res.rank ? res.rank : null
+      if (!group) {
+        rankBadge.textContent = 'NO RANK'
+        rankBadge.style.background = 'linear-gradient(135deg,#444,#222)'
+        rankBadge.style.color = '#fff'
+        rankBadge.style.display = 'block'
+        return
+      }
+      const displayMap = {
+        default: { label: 'PLAYER', gradient: 'linear-gradient(135deg,#b5b5b5,#8a8a8a)', fg: '#111' },
+        player: { label: 'PLAYER', gradient: 'linear-gradient(135deg,#b5b5b5,#8a8a8a)', fg: '#111' },
+        admin: { label: 'ADMIN', gradient: 'linear-gradient(135deg,#ff512f,#dd2476)', fg: '#fff' },
+        owner: { label: 'OWNER', gradient: 'linear-gradient(135deg,#8e2de2,#4a00e0)', fg: '#fff' },
+        dev: { label: 'DEV', gradient: 'linear-gradient(135deg,#7F00FF,#3f87f5)', fg: '#fff' },
+        moderator: { label: 'MOD', gradient: 'linear-gradient(135deg,#ff5fa8,#ff2d78)', fg: '#fff' },
+        mod: { label: 'MOD', gradient: 'linear-gradient(135deg,#ff5fa8,#ff2d78)', fg: '#fff' },
+        builder: { label: 'BUILDER', gradient: 'linear-gradient(135deg,#ff9a00,#ffce00)', fg: '#111' },
+        vip: { label: 'VIP', gradient: 'linear-gradient(135deg,#f7971e,#ffd200)', fg: '#111' },
+        diamond: { label: 'DIAMOND', gradient: 'linear-gradient(135deg,#5dddff,#00b5d6)', fg: '#fff' },
+        gold: { label: 'GOLD', gradient: 'linear-gradient(135deg,#ffd700,#ffae00)', fg: '#111' },
+        iron: { label: 'IRON', gradient: 'linear-gradient(135deg,#d1d1d1,#9e9e9e)', fg: '#111' }
+      }
+      const key = group.toLowerCase()
+      const style = displayMap[key] || { label: group.toUpperCase(), gradient: 'linear-gradient(135deg,#ffffff,#dbeafe)', fg: '#111' }
+      rankBadge.textContent = style.label
+      rankBadge.style.background = style.gradient
+      rankBadge.style.color = style.fg
+      rankBadge.style.display = 'block'
+    } catch (e) {
+      console.warn('Rank fetch failed:', e)
+      if (rankBadge) {
+        rankBadge.textContent = 'RANK ERR'
+        rankBadge.style.background = 'linear-gradient(135deg,#ff9966,#ff5e62)'
+        rankBadge.style.color = '#111'
+        rankBadge.style.display = 'block'
+      }
+    }
+  }
+  loadRank()
+
   function openAccountSettingsModal() {
     if (!settingsModal) return
     if (modalName) modalName.textContent = profile.name
@@ -141,10 +200,56 @@
     }, 300)
   }
 
+  async function openAboutModal() {
+    if (!aboutModal) return
+    try {
+      const res = await fetch('../package.json')
+      if (res && res.ok) {
+        const pkg = await res.json()
+        if (aboutVersionEl) aboutVersionEl.textContent = pkg.version || '—'
+        if (aboutNameEl) aboutNameEl.textContent = pkg.name || 'CubicLauncher'
+        if (aboutAuthorEl) aboutAuthorEl.textContent = (pkg.author && (pkg.author.name || pkg.author)) || pkg.author || 'n1ntencube'
+        if (aboutRepoEl && pkg.repository) {
+          const repo = typeof pkg.repository === 'string' ? pkg.repository : (pkg.repository.url || pkg.repository)
+          aboutRepoEl.textContent = String(repo).replace(/^git\+/, '')
+          aboutRepoEl.href = repo || '#'
+        }
+      }
+    } catch (e) {
+    }
+    aboutModal.classList.add('show')
+    fadeTransition(aboutModal, 'in')
+  }
+
+  function closeAboutModal() {
+    if (!aboutModal) return
+    fadeTransition(aboutModal, 'out')
+    setTimeout(() => {
+      aboutModal.classList.remove('show')
+    }, 300)
+  }
+
   if (profileLink) {
     profileLink.addEventListener('click', (e) => {
       e.preventDefault()
       openAccountSettingsModal()
+    })
+  }
+
+  if (logoBtn) {
+    logoBtn.addEventListener('click', (e) => {
+      e.preventDefault()
+      openAboutModal()
+    })
+  }
+
+  if (aboutClose) {
+    aboutClose.addEventListener('click', () => closeAboutModal())
+  }
+
+  if (aboutModal) {
+    aboutModal.addEventListener('click', (e) => {
+      if (e.target === aboutModal) closeAboutModal()
     })
   }
 
@@ -163,7 +268,11 @@
     modalLogout.addEventListener('click', async () => {
       try {
         await ipc.invoke('clear-login')
-        window.location.href = 'index.html'
+        document.body.style.transition = 'opacity 0.3s ease-out'
+        document.body.style.opacity = '0'
+        setTimeout(() => {
+          window.location.href = 'index.html'
+        }, 300)
       } catch (err) {
         alert('Logout failed: ' + (err.message || String(err)))
       }
@@ -333,11 +442,13 @@
         showProgressModal('Launching Minecraft 1.12.2')
 
         try {
-          updateProgress({ status: 'downloading-minecraft', progress: 0 })
+          if (playProgressBar) playProgressBar.style.width = '5%'
+          updateProgress({ status: 'downloading-minecraft', progress: 5 })
           const dlRes = await ipc.invoke('download-minecraft', { version: '1.12.2' })
           if (!dlRes || !dlRes.ok) {
             throw new Error((dlRes && dlRes.message) || 'Download failed')
           }
+          if (playProgressBar) playProgressBar.style.width = '20%'
         } catch (err) {
           console.warn('Minecraft download failed:', err)
           alert('Failed to download Minecraft 1.12.2: ' + (err.message || String(err)))
@@ -349,11 +460,30 @@
         }
 
         try {
-          updateProgress({ status: 'downloading-forge', progress: 10 })
-          const installRes = await ipc.invoke('install-forge-mods', { modsUrls: [] })
+          if (playProgressBar) playProgressBar.style.width = '30%'
+          updateProgress({ status: 'downloading-forge', progress: 30 })
+          
+          console.log('[Launch] Fetching NintenCube mod list...')
+          const modListRes = await ipc.invoke('get-nintencube-mods')
+          let modsUrls = []
+          
+          if (modListRes && modListRes.ok && modListRes.mods && modListRes.mods.length > 0) {
+            modsUrls = modListRes.mods.map(mod => {
+              if (typeof mod === 'string') return mod
+              if (mod.url) return mod.url
+              return null
+            }).filter(Boolean)
+            console.log(`[Launch] Found ${modsUrls.length} mods to install`)
+          } else {
+            console.log('[Launch] No mods found from database, continuing without mods')
+          }
+          
+          if (playProgressBar) playProgressBar.style.width = '40%'
+          const installRes = await ipc.invoke('install-forge-mods', { modsUrls })
           if (!installRes || !installRes.ok) {
             throw new Error((installRes && installRes.message) || 'Forge installation failed')
           }
+          if (playProgressBar) playProgressBar.style.width = '70%'
         } catch (err) {
           console.warn('Forge install failed:', err)
           alert('Failed to install Forge: ' + (err.message || String(err)))
@@ -364,21 +494,31 @@
           return
         }
 
+        if (playProgressBar) playProgressBar.style.width = '85%'
         updateProgress({ status: 'installing-forge', progress: 85 })
         const res = await ipc.invoke('launch', {
           mcProfile: profile,
           accessToken: mc.access_token
         })
 
+        if (playProgressBar) playProgressBar.style.width = '100%'
         closeProgressModal()
         if (res.ok) {
-          launchBtn.textContent = 'Minecraft Launched!'
-          if (playProgressBar) playProgressBar.style.width = '100%'
-          setTimeout(() => {
-            launchBtn.textContent = 'Launch Minecraft'
-            launchBtn.disabled = false
-            if (progressBarContainer) progressBarContainer.style.display = 'none'
-          }, 3000)
+          if (res.navigateToConsole) {
+            document.body.style.transition = 'opacity 0.3s ease-out'
+            document.body.style.opacity = '0'
+            setTimeout(() => {
+              window.location.href = 'console.html'
+            }, 300)
+          } else {
+            launchBtn.textContent = 'Minecraft Launched!'
+            if (playProgressBar) playProgressBar.style.width = '100%'
+            setTimeout(() => {
+              launchBtn.textContent = 'Launch Minecraft'
+              launchBtn.disabled = false
+              if (progressBarContainer) progressBarContainer.style.display = 'none'
+            }, 3000)
+          }
         } else {
           alert('Launch failed: ' + (res.message || 'Unknown error'))
           launchBtn.textContent = 'Launch Minecraft'
@@ -394,4 +534,61 @@
       }
     })
   }
+
+  const mojangStatusDot = document.getElementById('mojangStatusDot')
+  const mojangStatus = document.getElementById('mojangStatus')
+  const microsoftStatusDot = document.getElementById('microsoftStatusDot')
+  const microsoftStatus = document.getElementById('microsoftStatus')
+  const nintencubeStatusDot = document.getElementById('nintencubeStatusDot')
+  const nintencubeStatus = document.getElementById('nintencubeStatus')
+
+  async function checkServerStatus(url, timeoutMs = 5000) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), timeoutMs)
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeout)
+      return response.ok || response.status < 500
+    } catch (err) {
+      return false
+    }
+  }
+
+  async function updateServerStatuses() {
+    try {
+      const mojangOnline = await checkServerStatus('https://sessionserver.mojang.com/session/minecraft/profile/00000000000000000000000000000000')
+      if (mojangStatusDot) mojangStatusDot.className = mojangOnline ? 'status-dot online' : 'status-dot offline'
+      if (mojangStatus) mojangStatus.textContent = mojangOnline ? 'Online' : 'Offline'
+    } catch (e) {
+      if (mojangStatusDot) mojangStatusDot.className = 'status-dot offline'
+      if (mojangStatus) mojangStatus.textContent = 'Offline'
+    }
+
+    try {
+      const msOnline = await checkServerStatus('https://login.live.com/oauth20_authorize.srf')
+      if (microsoftStatusDot) microsoftStatusDot.className = msOnline ? 'status-dot online' : 'status-dot offline'
+      if (microsoftStatus) microsoftStatus.textContent = msOnline ? 'Online' : 'Offline'
+    } catch (e) {
+      if (microsoftStatusDot) microsoftStatusDot.className = 'status-dot offline'
+      if (microsoftStatus) microsoftStatus.textContent = 'Offline'
+    }
+
+    try {
+      const ncOnline = await checkServerStatus('https://play.nintencube.fr/')
+      if (nintencubeStatusDot) nintencubeStatusDot.className = ncOnline ? 'status-dot online' : 'status-dot offline'
+      if (nintencubeStatus) nintencubeStatus.textContent = ncOnline ? 'Online' : 'Offline'
+    } catch (e) {
+      if (nintencubeStatusDot) nintencubeStatusDot.className = 'status-dot offline'
+      if (nintencubeStatus) nintencubeStatus.textContent = 'Offline'
+    }
+  }
+
+  updateServerStatuses()
+
+  setInterval(updateServerStatuses, 30000)
 })()

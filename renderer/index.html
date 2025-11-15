@@ -16,6 +16,12 @@
       height: 100vh;
       margin: 0;
       text-align: center;
+      opacity: 0;
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
     }
     button {
       background: #3a86ff;
@@ -54,10 +60,11 @@
 </head>
 <body>
   <img src="img/logo.png" alt="Cubic Launcher" width="600" height="60">
-  <button id="loginBtn">Se connecter avec Microsoft</button>
+  <button id="loginBtn" data-i18n="loginMicrosoft">Sign in with Microsoft</button>
 
   <div id="profile"></div>
 
+  <script src="languages.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

@@ -18,6 +18,12 @@
       min-height: 100vh;
       overflow: hidden;
       color: #fff;
+      opacity: 0;
+      animation: fadeInBody 0.5s ease-out forwards;
+    }
+
+    @keyframes fadeInBody {
+      to { opacity: 1; }
     }
 
     .container {
@@ -58,7 +64,13 @@
       align-items: center;
       gap: 10px;
     }
-
+    .sidebar-middle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-direction: column;
+    }
     .sidebar-icon {
       width: 50px;
       height: 50px;
@@ -101,11 +113,12 @@
     }
 
     .title {
-      font-size: 2.2rem;
+      font-size: 3.5rem;
       font-weight: bold;
       letter-spacing: 2px;
       text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
       line-height: 1.2;
+      font-family: 'logo', sans-serif;
     }
 
     .subtext {
@@ -147,6 +160,7 @@
       flex-direction: column;
       align-items: center;
       gap: 20px;
+      position: relative;
     }
 
     .profile-img {
@@ -368,13 +382,74 @@
       border-color: rgba(255, 255, 255, 0.8);
       font-weight: bold;
     }
+    @font-face {
+    font-family: 'logo';
+    src: url('font/logo.otf') format('truetype'); 
+    }
+
+    .status-bar {
+      position: fixed;
+      bottom: 0;
+      left: 90px;
+      right: 0;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 30px;
+      font-size: 0.85rem;
+      z-index: 100;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0.9;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    .status-dot.online {
+      background: #2ecc71;
+      box-shadow: 0 0 8px rgba(46, 204, 113, 0.6);
+    }
+
+    .status-dot.offline {
+      background: #e74c3c;
+      box-shadow: 0 0 8px rgba(231, 76, 60, 0.6);
+    }
+
+    .status-dot.checking {
+      background: #f39c12;
+      box-shadow: 0 0 8px rgba(243, 156, 18, 0.6);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .status-label {
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="sidebar">
       <div class="sidebar-logo">
-        <img src="img/logo_cl_small.png" alt="CubicLauncher" />
+        <button id="logoBtn" title="About CubicLauncher" style="all:unset;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+          <img src="img/logo_cl_small.png" alt="CubicLauncher" />
+        </button>
       </div>
       <div class="sidebar-bottom">
         <div class="sidebar-icon" id="settingsIconBtn" title="Launcher Settings">⚙</div>
@@ -391,7 +466,7 @@
         <div class="title" id="title" data-i18n="title">nintencube</div>
         <div class="subtext" id="profile" data-i18n="ready">Ready to play!</div>
         <div style="display:flex; gap:12px; align-items:center;">
-          <button class="launch-btn" id="launchBtn" data-i18n="launch">▶ JOUER</button>
+          <button class="launch-btn" id="launchBtn" data-i18n="launch">▶ PLAY</button>
           <div style="width:140px; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden; display:none;" id="progressBarContainer">
             <div id="playProgressBar" style="height:100%; width:0%; background:linear-gradient(90deg,rgba(255,255,255,0.6),rgba(255,255,255,0.2)); transition:width 0.2s ease;"></div>
           </div>
@@ -402,11 +477,11 @@
         <a href="#" id="profileLink">
           <img id="skinImg" class="profile-img" src="profile.png" alt="Profile" />
         </a>
+        <div id="rankBadge" style="display:none; position:absolute; top:4px; right:4px; background:linear-gradient(135deg, rgba(255,255,255,0.9), rgba(200,200,255,0.85)); color:#111; padding:6px 12px; border-radius:12px; font-size:0.7rem; font-weight:700; letter-spacing:1px; box-shadow:0 4px 14px rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.4); backdrop-filter:blur(4px);">RANK</div>
       </div>
     </div>
   </div>
 
-  <!-- Account Settings Modal -->
   <div id="settingsModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -437,7 +512,6 @@
     </div>
   </div>
 
-  <!-- Launcher Settings Modal -->
   <div id="launcherSettingsModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -470,11 +544,48 @@
           </label>
         </div>
       </div>
-
       <div class="modal-buttons">
         <button id="launcherSettingsSave" class="modal-btn modal-btn-logout" style="background: #2ecc71;" data-i18n="save">Save</button>
         <button id="launcherSettingsClose" class="modal-btn modal-btn-close" data-i18n="close">Close</button>
       </div>
+    </div>
+  </div>
+
+  <div id="aboutModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" data-i18n="aboutCubic">About CubicLauncher</div>
+        <div class="modal-description" data-i18n="CubicDesc">Launcher to connect to NintenCube services.</div>
+      </div>
+
+      <div style="padding:12px; margin-bottom:16px;">
+        <div style="display:flex; gap:8px; margin-bottom:8px;"><strong>Launcher:</strong> <div id="aboutName">CubicLauncher</div></div>
+        <div style="display:flex; gap:8px; margin-bottom:8px;"><strong>Version:</strong> <div id="aboutVersion">—</div></div>
+        <div style="display:flex; gap:8px; margin-bottom:8px;"><strong>Author:</strong> <div id="aboutAuthor">NintenCube Team</div></div>
+        <div style="display:flex; gap:8px;"><strong>Repository:</strong> <a id="aboutRepo" href="#">n1ntencube/CubicLauncher</a></div>
+      </div>
+
+      <div class="modal-buttons">
+        <button id="aboutClose" class="modal-btn modal-btn-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-item">
+      <div class="status-dot checking" id="mojangStatusDot"></div>
+      <span class="status-label">Mojang:</span>
+      <span id="mojangStatus">Checking...</span>
+    </div>
+    <div class="status-item">
+      <div class="status-dot checking" id="microsoftStatusDot"></div>
+      <span class="status-label">Microsoft:</span>
+      <span id="microsoftStatus">Checking...</span>
+    </div>
+    <div class="status-item">
+      <div class="status-dot checking" id="nintencubeStatusDot"></div>
+      <span class="status-label">NintenCube:</span>
+      <span id="nintencubeStatus">Checking...</span>
     </div>
   </div>
 
