@@ -159,7 +159,7 @@ ipcMain.handle('launch', async (event, args) => {
   try {
     const { mcProfile, accessToken } = args
     
-    const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
+    const gameDir = path.join(app.getPath('appData'), '.cubiclauncher', 'minecraft')
     await fs.mkdir(gameDir, { recursive: true })
 
     console.log(`[Launcher] Launching Minecraft 1.12.2 with Forge for ${mcProfile.name}`)
@@ -553,7 +553,7 @@ ipcMain.handle('get-mod-packs', async () => {
 
 ipcMain.handle('get-installed-mods', async () => {
   try {
-    const modsDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft', 'mods')
+    const modsDir = path.join(app.getPath('appData'), '.cubiclauncher', 'minecraft', 'mods')
     const files = await fs.readdir(modsDir).catch(() => [])
     return files.filter(f => f.endsWith('.jar')).map(f => ({ name: f }))
   } catch (err) {
@@ -563,7 +563,7 @@ ipcMain.handle('get-installed-mods', async () => {
 
 ipcMain.handle('remove-mod', async (event, { modName }) => {
   try {
-    const modPath = path.join(os.homedir(), '.cubiclauncher', 'minecraft', 'mods', modName)
+    const modPath = path.join(app.getPath('appData'), '.cubiclauncher', 'minecraft', 'mods', modName)
     await fs.unlink(modPath)
     console.log(`[Mods] Removed: ${modName}`)
     return { ok: true }
@@ -604,7 +604,7 @@ ipcMain.handle('get-nintencube-mods', async () => {
 
 ipcMain.handle('install-forge-mods', async (event, { modsUrls, onProgress }) => {
   try {
-    const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
+    const gameDir = path.join(app.getPath('appData'), '.cubiclauncher', 'minecraft')
     const versionsDir = path.join(gameDir, 'versions')
     const modsDir = path.join(gameDir, 'mods')
     const librariesDir = path.join(gameDir, 'libraries')
@@ -828,7 +828,7 @@ ipcMain.handle('start-oauth', async () => {
 })
 
 ipcMain.handle('get-game-dir', async () => {
-  const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
+  const gameDir = path.join(app.getPath('appData'), '.cubiclauncher', 'minecraft')
   await fs.mkdir(gameDir, { recursive: true })
   return gameDir
 })
@@ -856,7 +856,7 @@ ipcMain.handle('kill-minecraft', async () => {
 
 ipcMain.handle('download-minecraft', async (event, { version }) => {
   try {
-    const gameDir = path.join(os.homedir(), '.cubiclauncher', 'minecraft')
+    const gameDir = path.join(app.getPath('appData'), '.cubiclauncher', 'minecraft')
     const versionsDir = path.join(gameDir, 'versions')
     const targetVersion = version || '1.12.2'
     
